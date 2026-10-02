@@ -11,7 +11,7 @@ real research agenda — but because a third unactioned REVIVE is just bookkeepi
 
 ---
 
-## 1. [QUICK WIN ~15min] Make one file run
+## 1. `[DONE 2026-10-02]` Make one file run
 
 Still true, 11 days later: `axelrod` is not installed, there is no `requirements.txt`,
 no venv, and the system `python3` (3.14.4) has no `pip`. Every `.py` in this repo
