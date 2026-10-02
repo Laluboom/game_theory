@@ -1,124 +1,112 @@
 # TODO — game_theory
 
-Verdict from the 2026-09-21 review: **REVIVE, narrowly.** The Bayesian
-opponent-type player is a real experiment that is ~80% written. The LLM/HPC half
-is dead and should be retired rather than maintained. These tasks are ordered so
-that finishing 1–3 gives you one result you could actually write down.
+Verdict 2026-10-02: **REVIVE, with a deadline.** Second review in a row with this
+verdict. The 2026-09-21 TODO was accurate and nothing was done — the only commit
+since is the review commit itself. So this list is deliberately shorter: two tasks
+produce a result, and everything else is deleted from the plan.
+
+**The gate:** if tasks 1 and 2 have not happened by the next review (~2026-10-12),
+the honest call is **PARK**. Not because the idea is bad — `main_question.md` is a
+real research agenda — but because a third unactioned REVIVE is just bookkeeping.
 
 ---
 
-## 1. [QUICK WIN ~15min] Make the repo runnable at all
+## 1. [QUICK WIN ~15min] Make one file run
 
-Nothing here runs. There is no `requirements.txt`, no README, and `axelrod` is not
-installed anywhere on this machine — every single `.py` file dies on line 1.
-`GameTheoryIMATMT/.python-version` contains `AIRun`, a pyenv virtualenv that only
-existed on the City HPC cluster.
-
-Write `requirements.txt` with pinned `axelrod`, `matplotlib`, `numpy`. Delete the
-three stale pyenv markers (`.python-version`, `.3.11.11`, `.python3.11.11`).
-Confirm with:
+Still true, 11 days later: `axelrod` is not installed, there is no `requirements.txt`,
+no venv, and the system `python3` (3.14.4) has no `pip`. Every `.py` in this repo
+dies on line 1. This is the entire reason nothing above it got done.
 
 ```sh
-python -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
-python -c "import axelrod as axl; print(len(axl.strategies), 'strategies')"
+cd /home/laluboom/repos/04_early_stage_and_ideas/game_theory
+python3 -m venv .venv && . .venv/bin/activate
+pip install axelrod matplotlib numpy && pip freeze > requirements.txt
+cd GameTheoryIMATMT && python Bayes_Player.py      # ~240 matches, 10 turns each
 ```
 
-Why it matters: this is the only thing standing between "a folder of files" and
-"a thing I can poke at". Everything below assumes it is done.
+Then delete the three dead pyenv markers — `.python-version` (`AIRun`),
+`.3.11.11` and `.python3.11.11` (both `myenv`). They name virtualenvs that only
+existed on the City cluster account and actively mislead any tool that reads them.
+
+Why it matters: you cannot form an opinion about the Bayesian player until you have
+watched it play once. Everything below assumes this is done.
 
 ---
 
-## 2. [BUG] The Bayesian player infers the opponent's type from its own moves
+## 2. [DESIGN] One session, one result — then stop
 
-`GameTheoryIMATMT/Bayes_Player.py` is the whole point of the repo, and its belief
-update reads `self.history` where it means `opponent.history`:
+This is the whole repo. Do not touch tasks 3–4 until this CSV exists.
 
-- `:30` — `cooperation_ratio` is computed over **the agent's own** actions, then
-  used at `:40` as evidence for `MajorityBased`.
-- `:46` — `recent_defections` counts the agent's own defections as evidence for
-  `ThresholdBased`. It also uses `self.history[-5:]` but guards with
-  `len(self.history) > 5`, so it silently reports `0` for the first six turns.
-- `:80`, `:86` — the action choice branches on the agent's own history too.
+`Bayes_Player.py` scores itself but never records **whether it identified the
+opponent**, which is the only question `main_question.md` actually asks. Fix that
+and the belief bug together, because the result is worthless without both:
 
-`:34` and `:42` are the only lines where `self.history` is correct (they are
-checking whether the opponent mirrors *you*). `update_beliefs` receives
-`opponent_move` but never sees the opponent's full history — pass the opponent in.
+- **`:30`, `:46`** — `cooperation_ratio` and `recent_defections` are computed over
+  `self.history`, the agent's *own* moves, then used at `:40`/`:47` as evidence about
+  the *opponent's* type. Pass `opponent` into `update_beliefs` and read
+  `opponent.history`. (`:46` also guards `len(self.history) > 5` around a `[-5:]`
+  slice, so it reports `0` for the first six turns.)
+- **`:34`** — off-by-one, and the prior review got this one wrong by calling it
+  correct. A TitForTat opponent's move at round *t−1* copies your move at round
+  *t−2*, so this must compare `opponent_move` against `self.history[-2]`, not
+  `[-1]`. As written it tests whether you both happened to play the same thing in
+  the same round — which is near-50/50 noise, so the TitForTat hypothesis never
+  gets real evidence. Guard for `len(self.history) >= 2`.
+- **`:91`** — `Turns = 10` gives nine belief updates. With likelihoods pinned at
+  0.1/0.9 and no floor (`:53-58`), that is not enough to converge and more than
+  enough to lock a prior near zero permanently. Raise to 200.
+- **`:94`** — cut `axl.all_strategies` (~240) to the ~8 opponents you have real
+  categories for, chosen from `axl.strategies` by their actual class names. The
+  names in `self.strategy_categories` (`:13-22`) are invented — `GrimTrigger`,
+  `Forgiver`, `Stochastic_TitForTat` do not exist in Axelrod (`Grudger` does) — and
+  that dict is **never read anywhere in the file**. Wire it up as the answer key.
+- Add `axl.TitForTat()` playing the same opponents, so "Bayesian scored 31" becomes
+  "Bayesian scored 31 where TitForTat scored 34".
 
-Why it matters: right now the posterior is mostly a function of what the agent
-already decided to do, which makes it self-confirming. Any result you get from
-this file before fixing it is meaningless.
-
----
-
-## 3. [DESIGN] Make the experiment answer its own question
-
-`Bayes_Player.py:99-104` records only scores. So you can run it and still not know
-the one thing you care about: **did it identify the opponent correctly?**
-
-In one session:
-
-- Record `max(self.priors, key=self.priors.get)` per match alongside the score.
-- Add a ground-truth column. `self.strategy_categories` (`:13-22`) already lists
-  opponent names per category but is **never read anywhere in the file** — wire it
-  up as the answer key. Note its names are invented (`"GrimTrigger"`,
-  `"Forgiver"`, `"Stochastic_TitForTat"`) and do not match real Axelrod class
-  names; reconcile them against `axl.strategies`.
-- Add a TitForTat baseline playing the same opponents, so "Bayesian scored 31"
-  becomes "Bayesian scored 31 where TitForTat scored 34".
-- Cut `:94` from `axl.all_strategies` (~240) down to the ~20 named opponents you
-  actually have categories for. Faster loop, interpretable table.
-
-Working means: one CSV with columns `opponent, true_category, inferred_category,
-bayes_score, titfortat_score`, and one chart. That is a result.
+**Working means:** one CSV, `opponent, true_category, inferred_category,
+bayes_score, titfortat_score`, eight rows you can read in one glance. If the
+inferred column is mostly wrong, that is still a result — write it down.
 
 ---
 
-## 4. [CHORE] Retire the LLM / HPC branch instead of maintaining it
+## 3. [CHORE] Archive the LLM/HPC half, do not fix it
 
-`GameTheoryIMATMT/HPC/` and `Strat_per_strat.py` cannot run anywhere you have
-access to, and are broken independently of that:
+`HPC/`, `Strat_per_strat.py` and the four `*.sh` runners need cluster GPUs, a City
+proxy (`HPC/config.py:5`), and `../archive/Llama3-8B`. None exist. They are also
+broken on their own terms, so there is nothing to preserve by keeping them live:
 
-- `HPC/tournament.py:22-24` stores `"Strategy": opponent.name` but
-  `"Opponent": scores[0]` — a *score* under a key named Opponent, and
-  `strategy.name` is never recorded. `HPC/plots.py:15` then does
-  `results[row[0]] = int(row[1])`, keying a dict by opponent name across a
-  240×240 loop, so every chart plots only the last match per name.
-- `HPC/ai_player.py:48` takes the last 50 **characters** of decoded model output
-  as the move sequence; `:53` maps anything that isn't `"C"` to defect, so
-  whitespace and punctuation become defections. The "LLM player" is a defect-heavy
-  random player.
-- `Strat_per_strat.py:70-77` loops `while True` until `ai_response == "✅"`, but
-  the prompt asks for `Y✅` and the response is the full decoded prompt+completion.
-  The condition can never be true. `:74` would then raise `TypeError` anyway —
-  `strategies` is a list being indexed by strategy name.
-- `config.py:5` hardcodes `hpc-proxy00.city.ac.uk`; `*.sh` hardcode
-  `/users/adgz422`.
+- `HPC/ai_player.py:48` takes the last 50 **characters** of decoded output as the
+  move sequence — including the echoed prompt, since nothing strips the input ids —
+  and `:53` maps anything that isn't `"C"` to defect. The "LLM player" is a
+  defect-heavy random player. The repo's headline comparison measures parsing noise.
+- `HPC/tournament.py:22-24` writes `"Strategy": opponent.name` and
+  `"Opponent": scores[0]` — a score under a key named Opponent — and never records
+  `strategy.name` or `scores[1]`. `HPC/plots.py:15` then keys a dict by that name
+  across a 240×240 loop, so each chart shows only the last match per name.
+- `Strat_per_strat.py:70-77` loops `while True` until `ai_response == "✅"` while the
+  prompt asks for `Y✅`; the condition can never fire. `:19` also passes
+  `device_map="none"`, which is not a valid value. It dies at `:29` first anyway,
+  reading a `results/` file that `.gitignore` excludes.
+- All four `*.sh` are copy-pasted from an **ANSYS Fluent CFD** template: every one
+  carries `module load fluent` and `--licenses=anshpc:176` on a PyTorch job, plus
+  `#SBATCH -D /users/adgz422`. They would queue for licenses they never use.
 
-Move `HPC/`, `Strat_per_strat.py` and the `*.sh` runners into `archive/` with a
-one-paragraph note on what they were for. Keep the SLURM scripts as templates if
-you ever get cluster access again — just stop pretending they are live code.
+Move all of it to `archive/` with a short note on what it was for.
 
 ---
 
-## 5. [BUG] Clear out the crashing root-level plot scripts
+## 4. [CHORE] Delete the four root-level plot scratch files
 
-Five files at the repo root, four of which are slider/scroll plot demos over
-random data and contain no game theory at all:
+`Plot_Basic.py` (`:33` passes a list of Players where `Slider` needs an Axes —
+crashes), `trial.py` (`:67` calls `ax.set_size_inches`, a Figure method — crashes),
+`trial_copy.py` (generic slider demo, no axelrod), `Horizontal_Bar_Plot.py` (a
+verbatim StackOverflow PyQt5 scroll-plot demo over `np.cumsum(np.random.randn(...))`
+at `:83` — no bars, no game theory, and it drags PyQt5 into your deps).
 
-- `Plot_Basic.py:33` — `Slider(chosen_strategies, ...)` passes a list where an
-  Axes is required. Crashes. `plot_scores` at `:13` also creates a new figure per
-  slider callback.
-- `trial.py:67` — `ax.set_size_inches(8, 6)`; that is a `Figure` method, not an
-  `Axes` method. `AttributeError` every run.
-- `trial_copy.py` — a generic matplotlib slider demo, 35 lines, random data.
-- `Horizontal_Bar_Plot.py` — a PyQt5 scrollable-plot widget plotting
-  `np.cumsum(np.random.randn(...))` at `:83`. No bars, horizontal or otherwise,
-  and it drags `PyQt5` into the dependency list for a demo. It also builds a
-  second `QApplication` at `:75` after `__init__` already made one at `:18-21`.
-- `Game_theory.py:14-23` — `CustomStrategy.strategy` falls off the end and returns
-  `None` for the first two rounds, and the class is never added to the tournament
-  (`:28` uses `axl.strategies`; `First_game_strategies` at `:29` is unused).
+Keep `Game_theory.py`, but note `CustomStrategy` (`:14-23`) falls off the end and
+returns `None` for the first two rounds and is never entered into the tournament
+(`:28` uses `axl.strategies`; `First_game_strategies` at `:29` is unused). Either
+give it a `return axl.Action.C` default and add it to the player list, or delete it.
 
-Keep `Game_theory.py`, delete the other four, and either fix `CustomStrategy`
-(return `C` when history is short) and enter it into the tournament, or delete it
-too. This also keeps `PyQt5` out of the `requirements.txt` you write in task 1.
+`Input_match.py` is five lines and fine — it is the human-vs-TitForTat REPL and the
+fastest way to sanity-check that Axelrod works after task 1.

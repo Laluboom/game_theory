@@ -1,67 +1,66 @@
-# game_theory — review brief, 2026-09-21
+# game_theory — daily brief, 2026-10-02
 
 ## What I looked at
 
-One commit, "Initial commit", 2026-05-30, 1069 lines, untouched since. I read all
-24 source files: the root plotting scripts, everything in `GameTheoryIMATMT/`
-including the `HPC/` package, the SLURM runners, and `main_question.md`. Not a
-web project, so no browser check.
+All 1,069 lines of source: the six root-level scripts, `GameTheoryIMATMT/` and its
+`HPC/` package, all four SLURM runners, and `main_question.md`. Also re-read the
+2026-09-21 review's `todo.md` and `last_run.json` to check them against the code.
+Not a web project, so no browser check.
 
-## What's actually here
+## The finding that matters most
 
-Two things that arrived from different places. `main_question.md` is a recent,
-well-shaped research question about decision-making under asymmetric knowledge —
-hidden types, private payoffs, deceptive signalling. The rest is old City,
-University of London coursework: Axelrod-library Prisoner's Dilemma experiments
-written to run on a cluster account (`adgz422`) against a locally-cached
-Llama-3-8B, with a hardcoded `city.ac.uk` proxy.
+**The last review was right about everything and nothing was done.** `git log` shows
+two commits total: the 2026-05-30 initial commit and `5ce0c23`, the review commit
+itself. Eleven days, zero source changes. The previous TODO was accurate, specific
+and anchored to line numbers — and it still didn't move. That is the actual signal
+here, more than any individual bug.
 
-They touch in exactly one file. `GameTheoryIMATMT/Bayes_Player.py` maintains a
-prior over opponent "strategy categories" and updates it each round — that is the
-research question in code. It is 124 lines and most of the way there.
+The reason is probably task ordering. Last time the quick win was "write
+requirements.txt" and the real experiment was task 3 of 5. Nobody reaches task 3 of
+5 in a 40-repo rotation. So this list is four tasks, two of them deletions, and the
+experiment is task 2.
 
-## What I found
+## What I found that the last review missed
 
-The headline bug is in that one file. The belief update reads `self.history`
-where it means `opponent.history`: `:30` computes the cooperation ratio over the
-agent's **own** moves and then uses it at `:40` as evidence about the opponent;
-`:46` counts the agent's own defections as evidence for `ThresholdBased`; `:80`
-and `:86` branch on own history too. So the posterior is substantially a function
-of what the agent already decided to do. Any number this produces is not
-measuring what the file says it measures.
+`Bayes_Player.py:34` is an **off-by-one**, and the previous review explicitly called
+it one of the two correct lines. It isn't. In Axelrod both histories are the same
+length when `strategy()` is called, so a TitForTat opponent's move at round *t−1*
+copies your move at round *t−2* — `self.history[-2]`, not `[-1]`. As written the line
+tests whether both players happened to play the same action in the same round, which
+is close to a coin flip, so the TitForTat hypothesis never accumulates real evidence.
+That matters because TitForTat-detection is the single thing this player most needs
+to get right.
 
-Second: the experiment can't answer its own question. `:99-104` saves only
-scores, never the inferred category, and `strategy_categories` at `:13-22` — the
-natural answer key — is populated and then never read anywhere in the file. Its
-names (`GrimTrigger`, `Forgiver`, `Stochastic_TitForTat`) don't match real
-Axelrod classes either.
+Two more: the likelihoods at `:53-58` are pinned at 0.1/0.9 with no floor, so priors
+decay geometrically and lock near zero permanently — and `Turns = 10` at `:91` gives
+only nine updates, so the posterior cannot converge either way. The experiment's
+horizon is too short to test its own hypothesis. And all four `*.sh` runners turn out
+to be copy-pasted from an **ANSYS Fluent CFD** job template: every one carries
+`module load fluent` and `--licenses=anshpc:176` on a PyTorch job, so they would
+queue for ANSYS licenses they never use.
 
-The LLM/HPC half is broken beyond the missing cluster. `Strat_per_strat.py:70`
-loops `while True` waiting for a response equal to `"✅"`, but the prompt asks for
-`Y✅` and the response is the full decoded prompt+completion — the exit condition
-can never fire; `:74` would raise `TypeError` anyway. `HPC/tournament.py:22-24`
-files a numeric score under the key `"Opponent"` and never records the strategy
-name, and `HPC/plots.py:15` then keys a dict by opponent name across a 240×240
-loop, so every chart shows only the last match per name. `HPC/ai_player.py:48`
-slices the last 50 *characters* of model output as moves and `:53` maps anything
-that isn't `"C"` to defect, which makes the "LLM player" a defect-heavy random
-player. `Initial_match.py:81` is a plain `NameError`.
+## What I'm proposing, and the verdict
 
-And nothing runs: no `requirements.txt`, no README, `axelrod` not installed,
-`.python-version` containing `AIRun`.
+**REVIVE, with a deadline.** `main_question.md` is a genuine research agenda — 71
+specific lines on asymmetric information, clearly written by hand — and
+`Bayes_Player.py` is that agenda roughly 80% implemented. That is more than most
+repos in this tier have, and it's why this isn't PARK today.
 
-## Verdict: REVIVE, narrowly
+But I've written the gate into `todo.md`: if the first two tasks haven't happened by
+~2026-10-12, the honest call is PARK. A third consecutive unactioned REVIVE would be
+bookkeeping rather than a plan.
 
-The idea is real and the first step is small. But revive one line and retire the
-other. Tasks 1–3 in `todo.md` are a single session that ends with a CSV reading
-`opponent, true_category, inferred_category, bayes_score, titfortat_score` and one
-chart — that is the definition of "working" for this project, and it is the first
-thing that would be worth putting in the empty `wiki/`. Task 4 moves `HPC/`,
-`Strat_per_strat.py` and the SLURM scripts to `archive/`: they cannot run anywhere
-you have access to, and fixing their result-labelling would be work spent on an
-experiment you can't execute. Task 5 clears four root-level plot demos on random
-data, one of which drags in PyQt5.
+Task 1 is unavoidable and genuinely 15 minutes — `axelrod` is still not installed,
+there's no venv, and the system `python3` has no `pip`, so every file in the repo
+dies on line 1. Task 2 collapses last review's bug fix and experiment redesign into
+one session with a concrete finish line: one CSV, eight rows, columns `opponent,
+true_category, inferred_category, bayes_score, titfortat_score`. If the inferred
+column comes out mostly wrong, that is still a result worth writing down.
 
-There was no previous `todo.md` or `reference.md`; both are new. If tasks 1–3
-haven't been touched by the next review, that's the signal to downgrade this to
-PARK or RETIRE — the Bayesian experiment is the only thing keeping it alive.
+Tasks 3 and 4 are both deletions. The LLM/HPC half is retired outright, not fixed —
+`HPC/ai_player.py:48` slices the last 50 *characters* of decoded output (prompt
+included, since the input ids are never stripped) and `:53` maps anything that isn't
+`"C"` to Defect, so the "LLM player" is a defect-heavy random player. The repo's
+headline comparison was measuring parsing noise. `HPC/tournament.py:22-24` then
+stores a score under a key named `Opponent` and never records `strategy.name` at all,
+so the saved results were unusable before the charts ever got them.
