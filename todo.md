@@ -1,112 +1,130 @@
 # TODO — game_theory
 
-Verdict 2026-10-02: **REVIVE, with a deadline.** Second review in a row with this
-verdict. The 2026-09-21 TODO was accurate and nothing was done — the only commit
-since is the review commit itself. So this list is deliberately shorter: two tasks
-produce a result, and everything else is deleted from the plan.
+Verdict 2026-11-02: **PARK.** The 2026-10-02 review set an explicit gate — "if tasks 1
+and 2 have not happened by ~2026-10-12, the honest call is PARK." It is now three weeks
+past that date. Task 1 was attempted on 2026-10-02 and **failed for a reason nobody
+could have fixed from inside this repo**; task 2 was never started. The gate fires.
 
-**The gate:** if tasks 1 and 2 have not happened by the next review (~2026-10-12),
-the honest call is **PARK**. Not because the idea is bad — `main_question.md` is a
-real research agenda — but because a third unactioned REVIVE is just bookkeeping.
+This is not a judgment on the idea. `main_question.md` is a real research agenda and
+`Bayes_Player.py` is roughly 80% of the first experiment. It is a judgment on the
+*prerequisite*, which is now diagnosed precisely instead of re-proposed a fourth time:
 
----
-
-## 1. `[DONE 2026-10-02]` Make one file run
-
-Still true, 11 days later: `axelrod` is not installed, there is no `requirements.txt`,
-no venv, and the system `python3` (3.14.4) has no `pip`. Every `.py` in this repo
-dies on line 1. This is the entire reason nothing above it got done.
-
-```sh
-cd /home/laluboom/repos/04_early_stage_and_ideas/game_theory
-python3 -m venv .venv && . .venv/bin/activate
-pip install axelrod matplotlib numpy && pip freeze > requirements.txt
-cd GameTheoryIMATMT && python Bayes_Player.py      # ~240 matches, 10 turns each
+```
+$ python3 --version                      → Python 3.14.4
+$ python3 -c "import ensurepip"          → ModuleNotFoundError: No module named 'ensurepip'
+$ python3 -c "import axelrod"            → ModuleNotFoundError: No module named 'axelrod'
 ```
 
-Then delete the three dead pyenv markers — `.python-version` (`AIRun`),
-`.3.11.11` and `.python3.11.11` (both `myenv`). They name virtualenvs that only
-existed on the City cluster account and actively mislead any tool that reads them.
+No `ensurepip` means `python3 -m venv` **cannot bootstrap pip at all** — it is not a
+sandbox permission quirk, the stdlib module is simply absent. Three consecutive reviews
+proposed "create a venv, pip install axelrod" as the 15-minute quick win. It was never a
+15-minute task on this machine; it was impossible. Task 1 below is the real blocker, and
+it does not belong to this repo.
 
-Why it matters: you cannot form an opinion about the Bayesian player until you have
-watched it play once. Everything below assumes this is done.
-
----
-
-## 2. [DESIGN] One session, one result — then stop
-
-This is the whole repo. Do not touch tasks 3–4 until this CSV exists.
-
-`Bayes_Player.py` scores itself but never records **whether it identified the
-opponent**, which is the only question `main_question.md` actually asks. Fix that
-and the belief bug together, because the result is worthless without both:
-
-- **`:30`, `:46`** — `cooperation_ratio` and `recent_defections` are computed over
-  `self.history`, the agent's *own* moves, then used at `:40`/`:47` as evidence about
-  the *opponent's* type. Pass `opponent` into `update_beliefs` and read
-  `opponent.history`. (`:46` also guards `len(self.history) > 5` around a `[-5:]`
-  slice, so it reports `0` for the first six turns.)
-- **`:34`** — off-by-one, and the prior review got this one wrong by calling it
-  correct. A TitForTat opponent's move at round *t−1* copies your move at round
-  *t−2*, so this must compare `opponent_move` against `self.history[-2]`, not
-  `[-1]`. As written it tests whether you both happened to play the same thing in
-  the same round — which is near-50/50 noise, so the TitForTat hypothesis never
-  gets real evidence. Guard for `len(self.history) >= 2`.
-- **`:91`** — `Turns = 10` gives nine belief updates. With likelihoods pinned at
-  0.1/0.9 and no floor (`:53-58`), that is not enough to converge and more than
-  enough to lock a prior near zero permanently. Raise to 200.
-- **`:94`** — cut `axl.all_strategies` (~240) to the ~8 opponents you have real
-  categories for, chosen from `axl.strategies` by their actual class names. The
-  names in `self.strategy_categories` (`:13-22`) are invented — `GrimTrigger`,
-  `Forgiver`, `Stochastic_TitForTat` do not exist in Axelrod (`Grudger` does) — and
-  that dict is **never read anywhere in the file**. Wire it up as the answer key.
-- Add `axl.TitForTat()` playing the same opponents, so "Bayesian scored 31" becomes
-  "Bayesian scored 31 where TitForTat scored 34".
-
-**Working means:** one CSV, `opponent, true_category, inferred_category,
-bayes_score, titfortat_score`, eight rows you can read in one glance. If the
-inferred column is mostly wrong, that is still a result — write it down.
+**Unpark when:** `pip install axelrod` succeeds on this machine. That is the whole
+condition. At that point tasks 2–4 of the 2026-10-02 list are still correct and still
+worth doing — they are preserved in git history at `55cc105` and summarised in task 4.
 
 ---
 
-## 3. [CHORE] Archive the LLM/HPC half, do not fix it
+## 1. [CHORE] Fix the Python toolchain — this is the actual blocker, and it is not local
 
-`HPC/`, `Strat_per_strat.py` and the four `*.sh` runners need cluster GPUs, a City
-proxy (`HPC/config.py:5`), and `../archive/Llama3-8B`. None exist. They are also
-broken on their own terms, so there is nothing to preserve by keeping them live:
+**File this in `_agents/TODO.md`, not here.** It blocks every Python repo in the fleet,
+not just this one: any doer run that needs a third-party package dies the same way, and
+the 2026-10-02 run burned a full session discovering that.
 
-- `HPC/ai_player.py:48` takes the last 50 **characters** of decoded output as the
-  move sequence — including the echoed prompt, since nothing strips the input ids —
-  and `:53` maps anything that isn't `"C"` to defect. The "LLM player" is a
-  defect-heavy random player. The repo's headline comparison measures parsing noise.
-- `HPC/tournament.py:22-24` writes `"Strategy": opponent.name` and
-  `"Opponent": scores[0]` — a score under a key named Opponent — and never records
-  `strategy.name` or `scores[1]`. `HPC/plots.py:15` then keys a dict by that name
-  across a 240×240 loop, so each chart shows only the last match per name.
+Two things are needed, and the second is the one that gets missed:
+
+- **A pip that exists.** Either `sudo apt-get install python3-venv` (the Debian package
+  that ships `ensurepip`), or drop a `uv` binary on the box — `uv` bundles its own
+  Python downloads and sidesteps the system interpreter entirely, which is the lower-risk
+  fix given the next point.
+- **An interpreter axelrod actually supports.** The ambient `python3` is **3.14**.
+  Axelrod is a slow-moving project and this repo's own deleted pyenv markers named
+  `3.11.11` — the original coursework ran on 3.11. Do not assume `pip install axelrod`
+  will resolve on 3.14; verify, and if it does not, pin 3.11 or 3.12 (`uv python install
+  3.11` makes this one line). **Confirming which Python versions axelrod has wheels for
+  is the first five minutes of this task**, not an afterthought.
+
+Why it matters: three reviews have now ranked a task first that could not be executed.
+Until this is fixed, every future `game_theory` task list is fiction.
+
+---
+
+## 2. `[QUICK WIN ~15min]` [CHORE] Delete the four dead plot scratch files
+
+Deliberately chosen because it needs **no Python at all** — it is `git rm` and nothing
+else, so unlike the last three quick wins it cannot be blocked by task 1. All four are
+root-level, none are imported by anything, and all four operate on random dummy data:
+
+- `Plot_Basic.py` — `:33` passes `chosen_strategies` (a list of `Player` objects) where
+  `Slider` requires an `Axes`. `TypeError` on import. Scores at `:11` are
+  `np.random.randint` dummies.
+- `trial.py` — `:67` calls `ax.set_size_inches(8, 6)`, a `Figure` method, on an `Axes`.
+  `AttributeError` every run, before `plt.show()`. Scores at `:11` are dummies too.
+- `trial_copy.py` — a generic matplotlib slider demo over `np.random.rand(37)`. Does not
+  import axelrod. No game theory in it.
+- `Horizontal_Bar_Plot.py` — a verbatim StackOverflow PyQt5 scroll-plot demo plotting
+  `np.cumsum(np.random.randn(...))` at `:83`. Despite the filename there is no bar chart,
+  and it builds a second `QApplication` at `:75` after `__init__` already made one at
+  `:18-21`. Keeping it drags PyQt5 into the dependency list for nothing.
+
+Keep `Input_match.py` — five lines, human vs TitForTat, and the fastest sanity check that
+Axelrod works once task 1 lands. Keep `Game_theory.py`, with its known wart recorded in
+`reference.md` rather than fixed now.
+
+---
+
+## 3. [DOCS] Archive the LLM/HPC half outright — the one decision that survives PARK
+
+This was task 3 on the last two lists and it is the part that should happen *regardless*
+of whether the repo ever unparks, because it is the only subtraction that makes the
+remaining repo legible. `HPC/`, `Strat_per_strat.py` and the four `*.sh` runners need
+cluster GPUs, a City proxy (`HPC/config.py:5`), and `../archive/Llama3-8B`. None exist
+and none will. They are also broken on their own terms, so nothing is lost:
+
+- `HPC/ai_player.py:48` takes the last 50 **characters** of decoded output as the move
+  sequence — still including the echoed prompt, since the input ids are never stripped —
+  and `:53` maps anything that is not literally `"C"` to Defect. The headline "LLM player"
+  is a defect-heavy random player measuring parsing noise.
+- `HPC/tournament.py:21-25` writes `"Strategy": opponent.name` and `"Opponent":
+  scores[0]` — a score stored under a key named Opponent — and never records
+  `strategy.name` or `scores[1]`. `HPC/plots.py:15` then keys a dict by that name across
+  the 240×240 loop, so every chart shows only the last match per name.
 - `Strat_per_strat.py:70-77` loops `while True` until `ai_response == "✅"` while the
-  prompt asks for `Y✅`; the condition can never fire. `:19` also passes
-  `device_map="none"`, which is not a valid value. It dies at `:29` first anyway,
-  reading a `results/` file that `.gitignore` excludes.
-- All four `*.sh` are copy-pasted from an **ANSYS Fluent CFD** template: every one
-  carries `module load fluent` and `--licenses=anshpc:176` on a PyTorch job, plus
+  prompt at `:43` asks for `Y✅`; the condition can never fire. `:74` would raise
+  `TypeError` anyway (`strategies` is a list, indexed there by strategy name), and `:20`
+  passes `device_map="none"`, not a valid value. It dies at `:29` first regardless,
+  reading a `results/` path that `.gitignore` excludes.
+- All four `*.sh` are copy-pasted from an **ANSYS Fluent CFD** template — verified, every
+  one carries `module load fluent` and `--licenses=anshpc:176` on a PyTorch job, plus
   `#SBATCH -D /users/adgz422`. They would queue for licenses they never use.
 
-Move all of it to `archive/` with a short note on what it was for.
+Move the lot to `archive/` with a three-line note saying what it was and why it stopped.
+Do not fix any of it.
 
 ---
 
-## 4. [CHORE] Delete the four root-level plot scratch files
+## 4. [DESIGN] Write the experiment design down, on paper, before unparking
 
-`Plot_Basic.py` (`:33` passes a list of Players where `Slider` needs an Axes —
-crashes), `trial.py` (`:67` calls `ax.set_size_inches`, a Figure method — crashes),
-`trial_copy.py` (generic slider demo, no axelrod), `Horizontal_Bar_Plot.py` (a
-verbatim StackOverflow PyQt5 scroll-plot demo over `np.cumsum(np.random.randn(...))`
-at `:83` — no bars, no game theory, and it drags PyQt5 into your deps).
+~30 minutes, needs no interpreter, and it is the one task that makes PARK cheap to
+reverse. The 2026-10-02 review worked out the full design and it is currently spread
+across a TODO that this file just replaced. Capture it in `main_question.md` under a
+"First experiment" heading so the next session is pure implementation:
 
-Keep `Game_theory.py`, but note `CustomStrategy` (`:14-23`) falls off the end and
-returns `None` for the first two rounds and is never entered into the tournament
-(`:28` uses `axl.strategies`; `First_game_strategies` at `:29` is unused). Either
-give it a `return axl.Action.C` default and add it to the player list, or delete it.
-
-`Input_match.py` is five lines and fine — it is the human-vs-TitForTat REPL and the
-fastest way to sanity-check that Axelrod works after task 1.
+- The CSV schema that defines "working": `opponent, true_category, inferred_category,
+  bayes_score, titfortat_score` — eight rows, readable in one glance.
+- The eight opponents, **by real Axelrod class name**. `Bayes_Player.py:13-22` invents
+  names that do not exist in the library (`GrimTrigger`, `Forgiver`,
+  `Stochastic_TitForTat`, `ForgivingTitForTat`, `FriendlyGrudger`, `RiskyCooperator`;
+  `Grudger` is the real one). Resolving those names needs library docs, not a working
+  install — do it now.
+- The three code fixes, already located: `:30`/`:46` compute `cooperation_ratio` and
+  `recent_defections` over `self.history`, the agent's **own** moves, then use them at
+  `:40`/`:47` as evidence about the opponent; `:34` is off by one (a TitForTat opponent's
+  move at round *t−1* copies your move at round *t−2*, so compare against
+  `self.history[-2]`, guarded for `len >= 2`); `:91` `Turns = 10` gives nine updates,
+  which with 0.1/0.9 likelihoods and no floor at `:53-58` locks priors near zero before
+  converging — raise to 200.
+- That `strategy_categories` is currently **never read** — only its keys and `len()`.
+  Wiring it up as the answer key is the point of the experiment.

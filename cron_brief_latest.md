@@ -1,66 +1,77 @@
-# game_theory — daily brief, 2026-10-02
+# game_theory — daily brief, 2026-11-02
+
+**Verdict: PARK.** Third review of this repo, and the first one that found the actual
+reason nothing happens here.
 
 ## What I looked at
 
-All 1,069 lines of source: the six root-level scripts, `GameTheoryIMATMT/` and its
-`HPC/` package, all four SLURM runners, and `main_question.md`. Also re-read the
-2026-09-21 review's `todo.md` and `last_run.json` to check them against the code.
-Not a web project, so no browser check.
+All 21 Python files, all five shell scripts, `main_question.md`, the wiki stubs, and the
+two previous reviews. I also ran three one-line environment checks, which turned out to
+be the whole story. No browser check — this is a Python/matplotlib repo with no web
+surface.
 
-## The finding that matters most
+## What I found
 
-**The last review was right about everything and nothing was done.** `git log` shows
-two commits total: the 2026-05-30 initial commit and `5ce0c23`, the review commit
-itself. Eleven days, zero source changes. The previous TODO was accurate, specific
-and anchored to line numbers — and it still didn't move. That is the actual signal
-here, more than any individual bug.
+The 2026-10-02 review set itself an explicit gate: *if tasks 1 and 2 have not happened by
+~2026-10-12, the honest call is PARK.* It is now three weeks past that date. Task 1 was
+attempted — commit `01c5099` — and completed only its trivial sub-step of deleting three
+dead pyenv markers. Task 2 was never started. No source file in this repo has changed
+since the initial commit on 2026-05-30.
 
-The reason is probably task ordering. Last time the quick win was "write
-requirements.txt" and the real experiment was task 3 of 5. Nobody reaches task 3 of
-5 in a 40-repo rotation. So this list is four tasks, two of them deletions, and the
-experiment is task 2.
+The interesting part is *why* task 1 failed, because the doer's report was honest but got
+filed as a one-off sandbox problem. It is not. I verified:
 
-## What I found that the last review missed
+```
+python3 --version                → Python 3.14.4
+python3 -c "import ensurepip"    → ModuleNotFoundError
+python3 -c "import axelrod"      → ModuleNotFoundError
+```
 
-`Bayes_Player.py:34` is an **off-by-one**, and the previous review explicitly called
-it one of the two correct lines. It isn't. In Axelrod both histories are the same
-length when `strategy()` is called, so a TitForTat opponent's move at round *t−1*
-copies your move at round *t−2* — `self.history[-2]`, not `[-1]`. As written the line
-tests whether both players happened to play the same action in the same round, which
-is close to a coin flip, so the TitForTat hypothesis never accumulates real evidence.
-That matters because TitForTat-detection is the single thing this player most needs
-to get right.
+`ensurepip` is a stdlib module and it is **absent**, which means `python3 -m venv` cannot
+bootstrap pip at all. This was never a permissions issue or a network issue — it is
+structurally impossible on this interpreter. Three consecutive reviews ranked "create a
+venv, `pip install axelrod`" first as a *15-minute quick win*. It was never a 15-minute
+task. That is a process failure in the review loop, not a lack of effort on the repo.
 
-Two more: the likelihoods at `:53-58` are pinned at 0.1/0.9 with no floor, so priors
-decay geometrically and lock near zero permanently — and `Turns = 10` at `:91` gives
-only nine updates, so the posterior cannot converge either way. The experiment's
-horizon is too short to test its own hypothesis. And all four `*.sh` runners turn out
-to be copy-pasted from an **ANSYS Fluent CFD** job template: every one carries
-`module load fluent` and `--licenses=anshpc:176` on a PyTorch job, so they would
-queue for ANSYS licenses they never use.
+There is a second trap waiting behind the first: the ambient Python is **3.14**, while
+this repo's own deleted pyenv markers named `3.11.11` — the original coursework ran on
+3.11. Axelrod is slow-moving and may have no 3.14 wheels, so fixing pip alone may not be
+enough. Checking axelrod's supported versions is the first five minutes of that task, not
+an afterthought.
 
-## What I'm proposing, and the verdict
+On the code itself, I re-derived the one finding the previous two reviews disagreed about
+and can confirm the 2026-10-02 version is right: `Bayes_Player.py:34` is off by one. A
+TitForTat opponent's move at round *t−1* copies the agent's move at round *t−2*, so the
+comparison must be against `self.history[-2]`. As written it asks whether both players
+happened to play the same action in the same round — near-coinflip noise, so the
+TitForTat hypothesis never accumulates real evidence. Alongside that, `:30` and `:46` feed
+the agent's **own** move history in as evidence about the opponent, and
+`strategy_categories` at `:13-22` — the dict that should be the experiment's answer key —
+is never read anywhere in the file.
 
-**REVIVE, with a deadline.** `main_question.md` is a genuine research agenda — 71
-specific lines on asymmetric information, clearly written by hand — and
-`Bayes_Player.py` is that agenda roughly 80% implemented. That is more than most
-repos in this tier have, and it's why this isn't PARK today.
+## What I'm proposing
 
-But I've written the gate into `todo.md`: if the first two tasks haven't happened by
-~2026-10-12, the honest call is PARK. A third consecutive unactioned REVIVE would be
-bookkeeping rather than a plan.
+PARK, not RETIRE, and explicitly not a fourth REVIVE. `main_question.md` is a genuine,
+well-specified research agenda and `Bayes_Player.py` is roughly 80% of its first
+experiment — the idea deserves to live. But a fourth REVIVE on a repo whose single
+prerequisite is externally blocked would be bookkeeping. The unpark condition is one
+externally-checkable fact: **`pip install axelrod` succeeds on this machine.**
 
-Task 1 is unavoidable and genuinely 15 minutes — `axelrod` is still not installed,
-there's no venv, and the system `python3` has no `pip`, so every file in the repo
-dies on line 1. Task 2 collapses last review's bug fix and experiment redesign into
-one session with a concrete finish line: one CSV, eight rows, columns `opponent,
-true_category, inferred_category, bayes_score, titfortat_score`. If the inferred
-column comes out mostly wrong, that is still a result worth writing down.
+Task 1 is the toolchain fix, and I've flagged it as belonging in `_agents/TODO.md` rather
+than here — it blocks every Python repo in the fleet the same way, and any doer run that
+needs a third-party package will die identically. That is the single most valuable thing
+in this review and it is not about game theory at all.
 
-Tasks 3 and 4 are both deletions. The LLM/HPC half is retired outright, not fixed —
-`HPC/ai_player.py:48` slices the last 50 *characters* of decoded output (prompt
-included, since the input ids are never stripped) and `:53` maps anything that isn't
-`"C"` to Defect, so the "LLM player" is a defect-heavy random player. The repo's
-headline comparison was measuring parsing noise. `HPC/tournament.py:22-24` then
-stores a score under a key named `Opponent` and never records `strategy.name` at all,
-so the saved results were unusable before the charts ever got them.
+The quick win is deliberately chosen to be immune to that blocker: delete the four
+root-level plot scratch files. It is `git rm` and nothing else. All four either crash
+(`Plot_Basic.py:33` passes Players where `Slider` wants an Axes; `trial.py:67` calls a
+Figure method on an Axes) or plot pure random dummy data, `Horizontal_Bar_Plot.py` is a
+verbatim StackOverflow PyQt5 demo with no bar chart and no game theory, and none are
+imported by anything.
+
+The other two tasks are both doable with no interpreter: archive the LLM/HPC half for
+good — its "AI player" parses moves as raw characters off the end of an echoed prompt and
+its four SLURM scripts are, confirmed by grep, copy-pasted from an **ANSYS Fluent CFD**
+template carrying `module load fluent` on a PyTorch job — and write the first-experiment
+design into `main_question.md` so unparking is pure implementation rather than
+rediscovery.

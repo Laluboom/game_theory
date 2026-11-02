@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-02",
+  "date": "2026-11-02",
   "tier": "04_early_stage_and_ideas",
   "selected_by": "daily routine, weighted random",
   "files_inspected": [
@@ -31,40 +31,41 @@
     "GameTheoryIMATMT/BayesPlayer.sh",
     "GameTheoryIMATMT/Initial_match.sh",
     "GameTheoryIMATMT/trial/trial.sh",
-    "GameTheoryIMATMT/trial/trial.py",
-    "GameTheoryIMATMT/.python-version",
-    "GameTheoryIMATMT/.3.11.11",
-    "GameTheoryIMATMT/.python3.11.11"
+    "GameTheoryIMATMT/trial/trial.py"
   ],
   "issues_confirmed": [
-    "GameTheoryIMATMT/Bayes_Player.py:34 - off-by-one in the TitForTat likelihood. A TFT opponent's move at round t-1 copies the agent's move at round t-2, so this must compare opponent_move against self.history[-2]; it compares against self.history[-1], which only tests whether both players happened to play the same action in the same round. The 2026-09-21 review called this line correct - it is not.",
-    "GameTheoryIMATMT/Bayes_Player.py:30 - cooperation_ratio is computed over self.history (the agent's own actions) and then used at :40 as evidence about the opponent's type; the belief update is partly self-confirming.",
-    "GameTheoryIMATMT/Bayes_Player.py:46 - recent_defections counts the agent's own defections as evidence for ThresholdBased, and the guard len(self.history) > 5 around a [-5:] slice forces it to 0 for the first six turns.",
-    "GameTheoryIMATMT/Bayes_Player.py:13-22 - strategy_categories maps categories to opponent class names, but the lists are never read anywhere in the file; only the dict keys and len() are used. Many names are invented and absent from Axelrod (GrimTrigger, Forgiver, Stochastic_TitForTat, ForgivingTitForTat, FriendlyGrudger, RiskyCooperator).",
+    "Environment (NEW, root cause) - `python3 --version` is 3.14.4 and `python3 -c \"import ensurepip\"` raises ModuleNotFoundError. Without ensurepip, `python3 -m venv` cannot bootstrap pip at all - this is a missing stdlib module, not a sandbox permission quirk. `python3 -c \"import axelrod\"` also raises ModuleNotFoundError. This is why the 2026-10-02 doer run could not complete task 1, and why three consecutive reviews ranked an unexecutable task first.",
+    "Environment (NEW, risk) - the ambient interpreter is Python 3.14 while this repo's own deleted pyenv markers named 3.11.11, i.e. the original coursework ran on 3.11. Axelrod may have no 3.14 wheels, so even a working pip may not resolve `pip install axelrod` on this interpreter.",
+    "Process (NEW) - the 2026-10-02 review set an explicit gate: flip to PARK if tasks 1 and 2 were not done by 2026-10-12. It is now 2026-11-02, three weeks past. Task 1 was attempted and blocked by the environment above (commit 01c5099 completed only its sub-step of deleting three dead pyenv markers); task 2 was never started. No source file has changed since the initial commit of 2026-05-30.",
+    "GameTheoryIMATMT/Bayes_Player.py:34 - off-by-one in the TitForTat likelihood. Re-derived this review and confirmed: at the turn where self.history and opponent.history each hold t entries, opponent_move is the opponent's round t-1 move, which a TitForTat copies from the agent's round t-2 move = self.history[-2]. The code compares against self.history[-1], which only tests whether both players happened to play the same action in the same round - near-50/50 noise, so the TitForTat hypothesis never receives real evidence.",
+    "GameTheoryIMATMT/Bayes_Player.py:30 - cooperation_ratio is computed over self.history (the agent's own actions) and then used at :40 as evidence about the opponent's type; the MajorityBased belief update is self-confirming.",
+    "GameTheoryIMATMT/Bayes_Player.py:46 - recent_defections counts the agent's own defections as evidence for ThresholdBased, and the guard `len(self.history) > 5` around a `[-5:]` slice forces the value to 0 for the first six turns.",
+    "GameTheoryIMATMT/Bayes_Player.py:13-22 - strategy_categories maps categories to opponent class names, but the lists are never read anywhere in the file; only the dict keys and len() are used. Many names are invented and absent from Axelrod (GrimTrigger, Forgiver, Stochastic_TitForTat, ForgivingTitForTat, FriendlyGrudger, RiskyCooperator); Grudger is the real one.",
     "GameTheoryIMATMT/Bayes_Player.py:53-58 - likelihoods are pinned at 0.1/0.9 with no floor, so priors decay geometrically and lock near zero permanently; combined with Turns = 10 at :91 (nine updates) the posterior cannot converge, so the experiment's horizon is too short to test its own hypothesis.",
-    "GameTheoryIMATMT/Bayes_Player.py:99-104 - results record only scores, never max(self.priors, key=...), so the run cannot answer whether the opponent's type was identified - the only question main_question.md asks.",
+    "GameTheoryIMATMT/Bayes_Player.py:99-104 - results record only scores, never max(self.priors, key=...), so a run cannot answer whether the opponent's type was identified - the only question main_question.md actually asks.",
+    "GameTheoryIMATMT/Bayes_Player.py:7-25 - BayesianAI subclasses axl.Player but defines no `classifier` dict, unlike every stock Axelrod strategy.",
     "GameTheoryIMATMT/HPC/ai_player.py:48 - response[-PLAYS:] takes the last 50 characters of the decoded output, which still includes the echoed prompt because the input ids are never stripped; :53 maps anything that is not literally \"C\" to Defect, making the LLM player a defect-heavy random player.",
-    "GameTheoryIMATMT/tournament.py:21-25 - result dicts set \"Strategy\" to opponent.name and \"Opponent\" to scores[0] (a score under a name key); strategy.name and scores[1] are never recorded.",
+    "GameTheoryIMATMT/HPC/ai_player.py:18,22 - the prompt is handed opponent.__class__.__name__, i.e. the opponent's exact identity, which removes the very information asymmetry main_question.md is about; it is also never given the match history.",
+    "GameTheoryIMATMT/HPC/tournament.py:21-25 - result dicts set \"Strategy\" to opponent.name and \"Opponent\" to scores[0] (a score stored under a name key); strategy.name and scores[1] are never recorded.",
     "GameTheoryIMATMT/HPC/plots.py:15 - results[row[0]] = int(row[1]) keys a dict by name across a ~240x240 loop, silently keeping only the last match per name, and row[1] holds a score mislabelled as Opponent by tournament.py.",
-    "GameTheoryIMATMT/Strat_per_strat.py:70-77 - while True exits only on ai_response == \"✅\" while the prompt at :43 asks for \"Y✅\", and the response is the full decoded prompt+completion; the condition can never fire. :74 would raise TypeError anyway (strategies is a list indexed by strategy name), and :19 passes device_map=\"none\", not a valid value. It fails first at :29 reading results/Strategy_Guide_results.json, which .gitignore excludes and which is absent.",
-    "GameTheoryIMATMT/Initial_match.py:81 - module-level reference to i, which is local to the loop inside plot_results; NameError after all ~57,600 matches have run.",
+    "GameTheoryIMATMT/Strat_per_strat.py:70-77 - while True exits only on ai_response == \"✅\" while the prompt at :43 asks for \"Y✅\", and the response is the full decoded prompt+completion; the condition can never fire. :74 would raise TypeError anyway (strategies is a list indexed there by strategy name), and :20 passes device_map=\"none\", not a valid value. It fails first at :29 reading results/Strategy_Guide_results.json, which .gitignore excludes and which is absent.",
+    "GameTheoryIMATMT/Initial_match.py:81 - module-level reference to `i`, which is local to the loop inside plot_results; NameError after all ~57,600 matches have run.",
     "GameTheoryIMATMT/Initial_match.py:25-26 - total_scores accumulates both players for every ordered pair, so each unordered pairing is counted twice and self-matches add both scores to the same key; the ranking is roughly 2x inflated. The whole loop reimplements axl.Tournament single-threaded.",
-    "GameTheoryIMATMT/main.sh:15,25 and Strat.sh, BayesPlayer.sh, Initial_match.sh - all four SLURM scripts are copy-pasted from an ANSYS Fluent CFD template, carrying 'module load fluent' and '--licenses=anshpc:176' on a PyTorch job, plus '#SBATCH -D /users/adgz422'.",
+    "GameTheoryIMATMT/*.sh - all four SLURM scripts confirmed by grep to be copy-pasted from an ANSYS Fluent CFD template: each carries `module load fluent` (:25) and `--licenses=anshpc:176` (:15) on a PyTorch job, plus `#SBATCH -D /users/adgz422` (:2). They would queue for licenses they never use.",
+    "GameTheoryIMATMT/trial/trial.sh:1 - an `echo` statement sits above the `#!/bin/bash` shebang on line 2, so the shebang is inert. The script it runs, trial/trial.py, is one line of print(\"Hello World!\").",
     "Game_theory.py:14-23 - CustomStrategy.strategy falls off the end and returns None for the first two rounds, and the class is never entered into the tournament (:28 uses axl.strategies); First_game_strategies at :29 is unused.",
-    "Plot_Basic.py:33 - Slider(chosen_strategies, ...) passes a list of Player objects where an Axes is required; TypeError on import.",
-    "trial.py:67 - ax.set_size_inches(8, 6) calls a Figure method on an Axes; AttributeError every run. Scores at :11 are np.random.randint dummies.",
-    "Horizontal_Bar_Plot.py:83 - a verbatim StackOverflow PyQt5 scroll-plot demo over np.cumsum(np.random.randn(...)); no bar chart and no game theory, and it builds a second QApplication at :75 after __init__ already made one at :18-21.",
-    "Repo-wide - axelrod is not installed, there is no requirements.txt and no venv, and the ambient python3 (3.14.4) has no pip; every .py fails at import axelrod. GameTheoryIMATMT/.python-version says AIRun and .3.11.11 / .python3.11.11 both say myenv, naming virtualenvs that existed only on the cluster.",
-    "Process - the 2026-09-21 review's five tasks were accurate and none were acted on; the only commit since is the review commit 5ce0c23 itself."
+    "Plot_Basic.py:33 - Slider(chosen_strategies, ...) passes a list of Player objects where an Axes is required; TypeError. Scores at :11 are np.random.randint dummies.",
+    "trial.py:67 - ax.set_size_inches(8, 6) calls a Figure method on an Axes; AttributeError every run, before plt.show(). Scores at :11 are dummies too.",
+    "Horizontal_Bar_Plot.py:83 - a verbatim StackOverflow PyQt5 scroll-plot demo over np.cumsum(np.random.randn(...)); no bar chart despite the filename, no game theory, and it builds a second QApplication at :75 after __init__ already made one at :18-21."
   ],
   "browser_checked": false,
   "proposed_tasks": [
-    "[QUICK WIN ~15min] Create a venv, pip install axelrod/matplotlib/numpy, freeze requirements.txt, run Bayes_Player.py once, and delete the three stale pyenv markers in GameTheoryIMATMT/",
-    "[DESIGN] One session, one result: fix the belief update to read opponent.history, fix the :34 off-by-one against self.history[-2], raise Turns to 200, cut to ~8 real Axelrod opponents, wire strategy_categories up as the answer key, add a TitForTat baseline, and emit one CSV of opponent/true_category/inferred_category/bayes_score/titfortat_score",
-    "[CHORE] Move HPC/, Strat_per_strat.py and the four ANSYS-template *.sh runners into archive/ with a note; do not fix them",
-    "[CHORE] Delete Plot_Basic.py, trial.py, trial_copy.py and Horizontal_Bar_Plot.py; keep Game_theory.py and either enter CustomStrategy into the tournament with a default return or delete it"
+    "[CHORE] Fix the Python toolchain - install python3-venv or drop a uv binary on the box, AND confirm which Python versions axelrod ships wheels for (pin 3.11/3.12 if 3.14 is unsupported). File in _agents/TODO.md, not here: it blocks every Python repo in the fleet.",
+    "[QUICK WIN ~15min] [CHORE] Delete Plot_Basic.py, trial.py, trial_copy.py and Horizontal_Bar_Plot.py - all four crash or plot random dummy data, none are imported, and this needs no interpreter so it cannot be blocked by task 1.",
+    "[DOCS] Archive the LLM/HPC half outright - move HPC/, Strat_per_strat.py and the four ANSYS-template *.sh runners to archive/ with a three-line note. Do this regardless of unparking; do not fix any of it.",
+    "[DESIGN] Write the first-experiment design into main_question.md while parked - the CSV schema that defines 'working', the eight opponents resolved to real Axelrod class names, and the three located code fixes. Needs no interpreter and makes PARK cheap to reverse."
   ],
-  "verdict": "REVIVE",
-  "verdict_note": "REVIVE with a deadline, and this is the second consecutive REVIVE with zero action. main_question.md is a real research agenda and Bayes_Player.py is that agenda ~80% written, which is why this is not PARK yet. But if tasks 1 and 2 have not happened by 2026-10-12, flip to PARK - a third unactioned REVIVE is bookkeeping, not a plan. The LLM/HPC half is retired outright regardless.",
-  "next_review": "2026-10-12"
+  "verdict": "PARK",
+  "verdict_note": "PARK, honouring the gate the 2026-10-02 review set for itself (tasks 1-2 by 2026-10-12, else PARK) - now three weeks overdue. Deliberately not RETIRE: main_question.md is a real research agenda and Bayes_Player.py is ~80% of the first experiment, so the idea is good. Deliberately not a fourth REVIVE: the blocker is now diagnosed as environmental and external to this repo - python3 is 3.14.4 with no ensurepip, so venv cannot bootstrap pip, which is why 'pip install axelrod' failed as a quick win three reviews running. A fourth REVIVE would be bookkeeping. Unpark condition is a single externally-checkable fact: `pip install axelrod` succeeds on this machine. The LLM/HPC half is retired outright regardless of what happens to the Bayesian line.",
+  "next_review": "2026-11-12"
 }
